@@ -83,9 +83,53 @@ You will configure it per-duel (host URL + token) from the Tampermonkey menu: **
 
 ## Running a duel
 
-### Host
+### Host with settings.yaml (recommended)
 
-On the machine that will coordinate the match:
+Copy the example and tweak it:
+
+```bash
+cp settings.example.yaml settings.yaml
+```
+
+Example settings:
+
+```yaml
+duration_minutes: 45
+win_score: 800
+problem_count: 5
+
+difficulty:
+  - Easy
+  - Medium
+
+topics:
+  - array
+  - hash-table
+  - two-pointers
+  - string
+
+exclude_premium: true
+# seed: 42   # optional — same picks every time
+```
+
+Then host:
+
+```bash
+yarn duelcs host --config settings.yaml --name Kiwi
+```
+
+What happens:
+
+1. duelcs asks LeetCode for problems matching your difficulty + topics
+2. Skips premium problems by default
+3. Randomly picks `problem_count` of them
+4. Prints the chosen set, then starts the host
+
+Topic names use LeetCode’s slugs (lowercase with hyphens), e.g. `dynamic-programming`, `linked-list`, `binary-search`.
+
+You can also put an explicit problem list in the YAML (`problems:`) to skip random selection.
+
+### Host with explicit problems
 
 ```bash
 yarn duelcs host \
@@ -95,7 +139,7 @@ yarn duelcs host \
   --name Kiwi
 ```
 
-You can pass LeetCode URLs instead of slugs:
+LeetCode URLs work too:
 
 ```bash
 yarn duelcs host --problems \

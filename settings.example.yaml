@@ -1,0 +1,44 @@
+# Example duel settings for duelcs.
+# Run: yarn duelcs host --config settings.yaml --name Kiwi
+
+# How long the match lasts (minutes)
+duration_minutes: 45
+
+# First player to this score wins early
+win_score: 800
+
+# How many problems to pick for this duel
+problem_count: 5
+
+# Point values for problems (in order of pick).
+# If omitted, defaults to 100, 200, 300, ...
+# points: [100, 200, 300, 400, 500]
+
+# Difficulty pool (any mix of Easy / Medium / Hard)
+difficulty:
+  - Easy
+  - Medium
+
+# Topic tags — problems must include at least one of these.
+# Use LeetCode topic slugs (lowercase, hyphenated).
+# Examples: array, hash-table, two-pointers, binary-search,
+# string, linked-list, tree, graph, dynamic-programming,
+# greedy, backtracking, stack, queue, heap-priority-queue, math
+topics:
+  - array
+  - hash-table
+  - two-pointers
+  - string
+
+# Skip premium (paid-only) problems. Recommended: true
+exclude_premium: true
+
+# Optional: fixed seed for the same problem set every time
+# seed: 42
+
+# Optional: hand-picked slugs instead of random selection.
+# If set, difficulty/topics filters are ignored.
+# problems:
+#   - two-sum
+#   - 3sum
+#   - longest-substring-without-repeating-characters
