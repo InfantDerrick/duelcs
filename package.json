@@ -1,0 +1,38 @@
+{
+  "name": "duelcs",
+  "version": "0.1.0",
+  "description": "Friend-hosted LeetCode lockout duels over Tailscale",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "duelcs": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "userscript",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.tsx",
+    "duelcs": "tsx src/cli.tsx",
+    "start": "node dist/cli.js",
+    "prepare": "yarn build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "ink": "^5.2.0",
+    "react": "^18.3.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^18.3.18",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
