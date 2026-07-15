@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { WebSocketServer, type WebSocket } from "ws";
 import type { MatchConfig, MatchState, Player, ProblemLock } from "./types.js";
 import type { ClientMessage, SolveReport } from "./protocol.js";
+import { applySolve } from "./modes.js";
 
 function id(prefix: string): string {
   return `${prefix}_${randomBytes(4).toString("hex")}`;
@@ -24,10 +25,7 @@ export class MatchRoom {
       players: [],
       locks: config.problems.map((problem) => ({
         slug: problem.slug,
-        ownerId: null,
-        ownerName: null,
-        lockedAt: null,
-        submissionUrl: null,
+        solves: [],
       })),
       startedAt: null,
       endsAt: null,
@@ -114,22 +112,20 @@ export class MatchRoom {
     if (!lock) {
       throw new Error(`Problem "${report.slug}" is not part of this duel.`);
     }
-    if (lock.ownerId) {
-      return;
-    }
 
     const problem = this.state.config.problems.find((entry) => entry.slug === report.slug);
     if (!problem) {
       throw new Error(`Problem "${report.slug}" is not part of this duel.`);
     }
 
-    lock.ownerId = player.id;
-    lock.ownerName = player.name;
-    lock.lockedAt = report.reportedAt ?? Date.now();
-    lock.submissionUrl = report.submissionUrl ?? null;
-    player.score += problem.points;
+    const record = applySolve(this.state.config, lock, problem, player, report);
+    if (!record) {
+      return;
+    }
 
-    if (player.score >= this.state.config.winScore) {
+    player.score += record.points;
+
+    if (this.state.config.winScore != null && player.score >= this.state.config.winScore) {
       this.finish(player.id);
       return;
     }
@@ -215,10 +211,13 @@ export function startHost(room: MatchRoom, port: number, bindHost = "0.0.0.0"): 
     if (req.method === "POST" && req.url === "/solve") {
       try {
         const body = JSON.parse(await readBody(req)) as SolveReport;
+        console.log(`[duelcs] solve report: slug=${body.slug} token=${String(body.token || "").slice(0, 8)}…`);
         room.reportSolve(body);
         sendJson(res, 200, { ok: true, state: room.state });
       } catch (error) {
-        sendJson(res, 400, { ok: false, message: error instanceof Error ? error.message : "Bad request" });
+        const message = error instanceof Error ? error.message : "Bad request";
+        console.warn(`[duelcs] solve rejected: ${message}`);
+        sendJson(res, 400, { ok: false, message });
       }
       return;
     }

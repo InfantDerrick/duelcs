@@ -1,0 +1,25 @@
+# Quick test config — lockout mode
+# Run: yarn duelcs host --config settings.test.yaml --name Kiwi
+
+mode: lockout
+
+duration_minutes: 15
+win_score: 400
+problem_count: 3
+
+difficulty:
+  - Easy
+  - Medium
+
+topics:
+  - array
+  - hash-table
+  - string
+
+exclude_premium: true
+
+# Same 3 problems every run — handy while testing
+seed: 7
+
+# Points for the 3 picked problems (100 + 200 + 300 = 600 total)
+points: [100, 200, 300]

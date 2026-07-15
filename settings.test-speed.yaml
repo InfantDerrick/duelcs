@@ -1,0 +1,22 @@
+# Speed mode — diminishing points per problem (100% / 50% / 25%)
+# Run: yarn duelcs host --config settings.test-speed.yaml --name Kiwi
+
+mode: speed
+
+duration_minutes: 15
+win_score: 500
+
+problem_count: 3
+
+difficulty:
+  - Easy
+  - Medium
+
+topics:
+  - array
+  - hash-table
+  - string
+
+exclude_premium: true
+seed: 7
+points: [100, 200, 300]

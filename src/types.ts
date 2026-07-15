@@ -5,6 +5,8 @@ export interface Problem {
   points: number;
 }
 
+export type GameMode = "lockout" | "cumulative" | "speed";
+
 export interface Player {
   id: string;
   name: string;
@@ -13,17 +15,23 @@ export interface Player {
   connected: boolean;
 }
 
-export interface ProblemLock {
-  slug: string;
-  ownerId: string | null;
-  ownerName: string | null;
-  lockedAt: number | null;
+export interface SolveRecord {
+  playerId: string;
+  playerName: string;
+  points: number;
+  solvedAt: number;
   submissionUrl: string | null;
 }
 
+export interface ProblemLock {
+  slug: string;
+  solves: SolveRecord[];
+}
+
 export interface MatchConfig {
+  mode: GameMode;
   durationMinutes: number;
-  winScore: number;
+  winScore: number | null;
   problems: Problem[];
 }
 

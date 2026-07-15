@@ -1,16 +1,20 @@
 // ==UserScript==
 // @name         duelcs — LeetCode lockout reporter
-// @namespace    https://github.com/duelcs/duelcs
-// @version      0.1.0
+// @namespace    https://github.com/InfantDerrick/duelcs
+// @version      0.2.0
 // @description  Report Accepted LeetCode submissions to a friend-hosted duelcs match
 // @author       duelcs
 // @match        https://leetcode.com/*
 // @match        https://leetcode.cn/*
+// @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        unsafeWindow
 // @connect      *
+// @connect      127.0.0.1
+// @connect      localhost
 // ==/UserScript==
 
 (function () {
@@ -18,44 +22,98 @@
 
   const STORAGE_HOST = "duelcs_host_url";
   const STORAGE_TOKEN = "duelcs_player_token";
+  const reported = new Set();
+  const page = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+
+  function log(...args) {
+    console.info("[duelcs]", ...args);
+  }
+
+  function warn(...args) {
+    console.warn("[duelcs]", ...args);
+  }
 
   function currentSlug() {
-    const match = window.location.pathname.match(/\/problems\/([^/]+)/);
+    const match = page.location.pathname.match(/\/problems\/([^/]+)/);
     return match ? match[1] : null;
   }
 
-  function configure() {
-    const host = prompt("duelcs host URL (example: http://100.64.0.2:3737)", GM_getValue(STORAGE_HOST, ""));
-    if (host === null) {
-      return;
-    }
-    const token = prompt("Your duelcs player token (from terminal)", GM_getValue(STORAGE_TOKEN, ""));
-    if (token === null) {
-      return;
-    }
-    GM_setValue(STORAGE_HOST, host.trim().replace(/\/$/, ""));
-    GM_setValue(STORAGE_TOKEN, token.trim());
-    alert("duelcs settings saved.");
+  function hostUrl() {
+    return String(GM_getValue(STORAGE_HOST, "") || "").trim().replace(/\/$/, "");
   }
 
-  GM_registerMenuCommand("Configure duelcs", configure);
+  function playerToken() {
+    return String(GM_getValue(STORAGE_TOKEN, "") || "").trim();
+  }
 
-  const reported = new Set();
+  function configure() {
+    const host = prompt(
+      "duelcs host URL\nUse Tailscale IP for friends, or http://127.0.0.1:3737 on the host machine.",
+      hostUrl() || "http://127.0.0.1:3737",
+    );
+    if (host === null) return;
 
-  function reportSolve(slug, submissionUrl) {
-    if (reported.has(slug)) {
-      return;
-    }
-    const host = GM_getValue(STORAGE_HOST, "");
-    const token = GM_getValue(STORAGE_TOKEN, "");
+    const token = prompt("Your duelcs player token (from the terminal scoreboard)", playerToken());
+    if (token === null) return;
+
+    GM_setValue(STORAGE_HOST, host.trim().replace(/\/$/, ""));
+    GM_setValue(STORAGE_TOKEN, token.trim());
+    alert("duelcs settings saved. Open the browser console (F12) and look for [duelcs] logs.");
+    log("Configured host=", hostUrl(), "token=", playerToken().slice(0, 8) + "…");
+  }
+
+  function testConnection() {
+    const host = hostUrl();
+    const token = playerToken();
     if (!host || !token) {
-      console.warn("[duelcs] Missing host URL or token. Use Tampermonkey → duelcs → Configure duelcs.");
+      alert("Configure duelcs first (Tampermonkey menu → Configure duelcs).");
       return;
     }
 
+    log("Testing connection to", host + "/health");
+    GM_xmlhttpRequest({
+      method: "GET",
+      url: host + "/health",
+      onload(response) {
+        log("Health status", response.status, response.responseText);
+        if (response.status >= 200 && response.status < 300) {
+          alert("Host reachable ✓\n" + response.responseText + "\n\nToken starts with: " + token.slice(0, 8));
+        } else {
+          alert("Host responded with " + response.status + "\n" + response.responseText);
+        }
+      },
+      onerror(err) {
+        warn("Health check failed", err);
+        alert(
+          "Could not reach " +
+            host +
+            "\n\nChecklist:\n• Is duelcs host still running?\n• Is the URL exactly what the terminal shows?\n• Same machine → http://127.0.0.1:PORT\n• Friend machine → http://TAILSCALE_IP:PORT",
+        );
+      },
+    });
+  }
+
+  function reportSolve(slug, submissionUrl, source) {
+    if (!slug) {
+      warn("No problem slug to report");
+      return;
+    }
+    if (reported.has(slug)) {
+      log("Already reported", slug);
+      return;
+    }
+
+    const host = hostUrl();
+    const token = playerToken();
+    if (!host || !token) {
+      warn("Missing host URL or token. Configure duelcs from the Tampermonkey menu.");
+      return;
+    }
+
+    log("Reporting Accepted:", slug, "via", source, "→", host + "/solve");
     GM_xmlhttpRequest({
       method: "POST",
-      url: `${host.replace(/\/$/, "")}/solve`,
+      url: host + "/solve",
       headers: { "Content-Type": "application/json" },
       data: JSON.stringify({
         token,
@@ -64,85 +122,160 @@
         reportedAt: Date.now(),
       }),
       onload(response) {
+        log("Solve response", response.status, response.responseText);
         if (response.status >= 200 && response.status < 300) {
           reported.add(slug);
-          console.info(`[duelcs] Reported Accepted on ${slug}`);
+          log("Reported Accepted on", slug);
           return;
         }
-        console.warn(`[duelcs] Host rejected solve report (${response.status}):`, response.responseText);
+        warn("Host rejected solve report:", response.status, response.responseText);
+        // Common case: duel still in lobby
+        try {
+          const body = JSON.parse(response.responseText);
+          if (body.message) alert("duelcs: " + body.message);
+        } catch {
+          // ignore
+        }
       },
       onerror() {
-        console.warn("[duelcs] Could not reach host. Is Tailscale up and duelcs host running?");
+        warn("Could not reach host at", host, "— is duelcs running / Tailscale up?");
+        alert("duelcs could not reach " + host);
       },
     });
   }
 
-  function maybeReportFromPayload(payload, slugOverride) {
-    if (!payload || typeof payload !== "object") {
-      return;
-    }
+  function isAcceptedPayload(payload) {
+    if (!payload || typeof payload !== "object") return false;
 
     const status = payload.status_msg || payload.status || payload.state || payload.submission?.status;
-    const slug = slugOverride || payload.question_slug || payload.slug || currentSlug();
-    if (!slug) {
-      return;
+    if (status === "Accepted" || status === "AC" || String(status).toLowerCase() === "accepted") {
+      return true;
     }
-
-    const accepted =
-      status === "Accepted" ||
-      status === "AC" ||
-      payload.status_code === 10 ||
-      payload.statusCode === 10;
-
-    if (!accepted) {
-      return;
+    if (payload.status_code === 10 || payload.statusCode === 10) {
+      return true;
     }
-
-    const submissionUrl =
-      payload.submission_url ||
-      (payload.submission_id ? `https://leetcode.com/submissions/detail/${payload.submission_id}/` : window.location.href);
-
-    reportSolve(slug, submissionUrl);
+    // Nested GraphQL-ish shapes
+    if (payload.data && typeof payload.data === "object") {
+      return isAcceptedPayload(payload.data);
+    }
+    return false;
   }
 
-  const originalFetch = window.fetch.bind(window);
-  window.fetch = async (...args) => {
+  function extractSlug(payload, requestUrl) {
+    if (payload?.question_title_slug) return payload.question_title_slug;
+    if (payload?.question_slug) return payload.question_slug;
+    if (payload?.slug) return payload.slug;
+
+    const fromUrl = String(requestUrl || "").match(/\/problems\/([^/?#]+)/);
+    if (fromUrl) return fromUrl[1];
+
+    return currentSlug();
+  }
+
+  function extractSubmissionUrl(payload) {
+    if (payload?.submission_url) return payload.submission_url;
+    const id = payload?.submission_id || payload?.submissionId;
+    if (id) return `https://leetcode.com/submissions/detail/${id}/`;
+    return page.location.href;
+  }
+
+  function maybeReportFromPayload(payload, requestUrl, source) {
+    if (!isAcceptedPayload(payload)) {
+      const status = payload?.status_msg || payload?.status || payload?.state;
+      if (status && /pending|started|judging/i.test(String(status))) {
+        log("Submission still running:", status);
+      }
+      return;
+    }
+
+    const slug = extractSlug(payload, requestUrl);
+    log("Detected Accepted payload for", slug, "from", source);
+    reportSolve(slug, extractSubmissionUrl(payload), source);
+  }
+
+  function shouldInspectUrl(url) {
+    const value = String(url || "");
+    // Relative paths like /submissions/detail/123/check/ are common.
+    return /submit|submission|\/check\/|graphql/i.test(value);
+  }
+
+  function inspectResponseBody(bodyText, requestUrl, source) {
+    if (!bodyText) return;
+    try {
+      const payload = JSON.parse(bodyText);
+      maybeReportFromPayload(payload, requestUrl, source);
+    } catch {
+      // Non-JSON responses are ignored.
+    }
+  }
+
+  // --- Hook page fetch (must use unsafeWindow so we see LeetCode's own calls) ---
+  const originalFetch = page.fetch.bind(page);
+  page.fetch = async function duelcsFetch(...args) {
     const response = await originalFetch(...args);
     try {
       const requestUrl = typeof args[0] === "string" ? args[0] : args[0]?.url || "";
-      if (/leetcode\.(com|cn)/.test(requestUrl) && /submit|submission|graphql|check/i.test(requestUrl)) {
+      if (shouldInspectUrl(requestUrl)) {
         const clone = response.clone();
         clone
-          .json()
-          .then((payload) => maybeReportFromPayload(payload, currentSlug()))
+          .text()
+          .then((text) => inspectResponseBody(text, requestUrl, "fetch:" + requestUrl))
           .catch(() => undefined);
       }
     } catch {
-      // Ignore parse errors — LeetCode changes response shapes often.
+      // ignore
     }
     return response;
   };
 
-  let domTimer = null;
-  const observer = new MutationObserver(() => {
-    const slug = currentSlug();
-    if (!slug || reported.has(slug)) {
-      return;
-    }
-    if (!document.body?.innerText.includes("Accepted")) {
-      return;
-    }
-    clearTimeout(domTimer);
-    domTimer = setTimeout(() => {
-      if (document.body?.innerText.includes("Accepted")) {
-        reportSolve(slug, window.location.href);
+  // --- Hook XHR too (some LeetCode paths still use it) ---
+  const OriginalXHR = page.XMLHttpRequest;
+  function PatchedXHR() {
+    const xhr = new OriginalXHR();
+    let requestUrl = "";
+
+    const originalOpen = xhr.open;
+    xhr.open = function (method, url, ...rest) {
+      requestUrl = String(url || "");
+      return originalOpen.call(this, method, url, ...rest);
+    };
+
+    xhr.addEventListener("load", function () {
+      if (!shouldInspectUrl(requestUrl)) return;
+      try {
+        inspectResponseBody(xhr.responseText, requestUrl, "xhr:" + requestUrl);
+      } catch {
+        // ignore
       }
-    }, 500);
-  });
+    });
 
-  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    return xhr;
+  }
+  page.XMLHttpRequest = PatchedXHR;
 
-  if (!GM_getValue(STORAGE_HOST, "") || !GM_getValue(STORAGE_TOKEN, "")) {
-    console.info("[duelcs] Not configured yet. Tampermonkey menu → Configure duelcs.");
+  function reportCurrentManually() {
+    const slug = currentSlug();
+    if (!slug) {
+      alert("Open a LeetCode problem page first.");
+      return;
+    }
+    reportSolve(slug, page.location.href, "manual-menu");
+  }
+
+  GM_registerMenuCommand("Configure duelcs", configure);
+  GM_registerMenuCommand("Test duelcs host connection", testConnection);
+  GM_registerMenuCommand("Manually report current problem as Accepted", reportCurrentManually);
+
+  log(
+    "Userscript loaded. host=",
+    hostUrl() || "(not set)",
+    "token=",
+    playerToken() ? playerToken().slice(0, 8) + "…" : "(not set)",
+    "slug=",
+    currentSlug() || "(none)",
+  );
+
+  if (!hostUrl() || !playerToken()) {
+    log("Not configured yet. Tampermonkey menu → Configure duelcs.");
   }
 })();

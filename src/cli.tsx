@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { MatchRoom, startHost } from "./host.js";
 import { selectProblemsFromSettings } from "./catalog.js";
+import { MODES, normalizeMode } from "./modes.js";
 import { defaultPoints, parseProblemInput } from "./protocol.js";
 import {
   loadSettingsFile,
@@ -9,13 +10,25 @@ import {
   problemsFromSettingsList,
 } from "./settings.js";
 import { runSession } from "./ui/SessionApp.js";
-import type { MatchConfig, Problem } from "./types.js";
+import type { GameMode, MatchConfig, Problem } from "./types.js";
+
+function parseWinScoreFlag(raw: string | undefined, mode: GameMode): number | null {
+  if (raw == null || raw === "" || raw === "none") {
+    return mode === "lockout" ? 800 : null;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("Win score must be a positive number or 'none'.");
+  }
+  return parsed;
+}
 
 async function buildConfig(options: {
   problems?: string[];
   points?: string;
   duration: string;
-  winScore: string;
+  winScore?: string;
+  mode?: string;
   config?: string;
 }): Promise<{ match: MatchConfig; source: string }> {
   if (options.config) {
@@ -34,6 +47,8 @@ async function buildConfig(options: {
       }
     }
 
+    console.log(`Mode: ${MODES[settings.mode].label} — ${MODES[settings.mode].description}`);
+
     return {
       match: matchConfigFromProblems(problems, settings),
       source: options.config,
@@ -45,6 +60,7 @@ async function buildConfig(options: {
     throw new Error("Provide --config settings.yaml or --problems <slugs...>.");
   }
 
+  const mode = normalizeMode(options.mode ?? "lockout");
   const pointValues = options.points
     ? options.points.split(",").map((value) => Number(value.trim()))
     : defaultPoints(slugs.length);
@@ -58,16 +74,15 @@ async function buildConfig(options: {
   );
 
   const durationMinutes = Number(options.duration);
-  const winScore = Number(options.winScore);
+  const winScore = parseWinScoreFlag(options.winScore, mode);
   if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
     throw new Error("Duration must be a positive number of minutes.");
   }
-  if (Number.isNaN(winScore) || winScore <= 0) {
-    throw new Error("Win score must be a positive number.");
-  }
+
+  console.log(`Mode: ${MODES[mode].label} — ${MODES[mode].description}`);
 
   return {
-    match: { durationMinutes, winScore, problems },
+    match: { mode, durationMinutes, winScore, problems },
     source: "cli flags",
   };
 }
@@ -78,7 +93,8 @@ async function runHost(options: {
   problems?: string[];
   points?: string;
   duration: string;
-  winScore: string;
+  winScore?: string;
+  mode?: string;
   name: string;
   config?: string;
 }) {
@@ -107,7 +123,7 @@ function runJoin(hostUrl: string, name: string) {
 }
 
 const program = new Command();
-program.name("duelcs").description("Friend-hosted LeetCode lockout duels");
+program.name("duelcs").description("Friend-hosted LeetCode duels");
 
 program
   .command("host")
@@ -115,14 +131,15 @@ program
   .option("--port <number>", "Port for HTTP/WebSocket traffic", "3737")
   .option("--bind <address>", "Address to bind", "0.0.0.0")
   .option("--name <name>", "Your display name", "Host")
-  .option("--config <path>", "YAML settings file for duration, topics, difficulty, count, etc.")
+  .option("--config <path>", "YAML settings file (mode, duration, topics, etc.)")
   .option(
     "--problems <items...>",
     "LeetCode slugs or URLs (optional if --config is set)",
   )
+  .option("--mode <mode>", "Game mode: lockout, cumulative, speed", "lockout")
   .option("--points <list>", "Comma-separated points per problem")
-  .option("--duration <minutes>", "Match length in minutes (ignored if --config sets it)", "45")
-  .option("--win-score <points>", "Score needed to win early (ignored if --config sets it)", "800")
+  .option("--duration <minutes>", "Match length in minutes", "45")
+  .option("--win-score <points|none>", "Early win score (none = timer only)", "800")
   .action(async (options) => {
     try {
       await runHost(options);

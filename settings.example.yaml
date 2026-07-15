@@ -1,10 +1,13 @@
 # Example duel settings for duelcs.
 # Run: yarn duelcs host --config settings.yaml --name Kiwi
 
+# Game mode: lockout | cumulative | speed
+mode: lockout
+
 # How long the match lasts (minutes)
 duration_minutes: 45
 
-# First player to this score wins early
+# Early win score. Omit or set null for timer-only (cumulative/speed).
 win_score: 800
 
 # How many problems to pick for this duel

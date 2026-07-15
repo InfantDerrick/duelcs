@@ -21,8 +21,16 @@ function SessionApp({ hostUrl, name, isHost }: SessionAppProps) {
         setSession(nextSession);
         setState(initialState);
       },
-      onState: setState,
-      onError: setStatusMessage,
+      onState: (nextState) => {
+        setState(nextState);
+        if (nextState.phase === "running") {
+          setStatusMessage(undefined);
+        }
+      },
+      onError: (message) => {
+        // Force a refresh even if the same error is repeated.
+        setStatusMessage(`${message} (${new Date().toLocaleTimeString()})`);
+      },
     });
 
     return () => joined.close();

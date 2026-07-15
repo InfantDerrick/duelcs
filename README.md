@@ -1,10 +1,10 @@
 # duelcs
 
-**Friend-hosted LeetCode lockout duels.**
+**Friend-hosted LeetCode duels.**
 
-You and a friend pick a set of LeetCode problems. You both solve them on leetcode.com like normal. The first person to get **Accepted** on a problem locks it and takes the points — the other person gets nothing for that problem. First to the target score wins (or highest score when time runs out).
+You and friends pick LeetCode problems, solve them in the browser, and duelcs keeps score live. One person hosts on their laptop; everyone connects over **Tailscale**. A **browser userscript** reports Accepted submissions.
 
-There is no duelcs website, no accounts, and no cloud server you depend on. One friend runs a small program on their laptop. Everyone else connects over **Tailscale**. A **browser userscript** tells the host when you get an Accepted submission on LeetCode.
+**Game modes:** lockout (snipe problems), cumulative (timed free-for-all), speed (diminishing points).
 
 ---
 
@@ -94,8 +94,11 @@ cp settings.example.yaml settings.yaml
 Example settings:
 
 ```yaml
+# lockout | cumulative | speed
+mode: lockout
+
 duration_minutes: 45
-win_score: 800
+win_score: 800          # omit or null for timer-only (cumulative/speed)
 problem_count: 5
 
 difficulty:
@@ -109,7 +112,7 @@ topics:
   - string
 
 exclude_premium: true
-# seed: 42   # optional — same picks every time
+# seed: 42
 ```
 
 Then host:
@@ -133,10 +136,17 @@ You can also put an explicit problem list in the YAML (`problems:`) to skip rand
 
 ```bash
 yarn duelcs host \
+  --mode lockout \
   --problems two-sum 3sum longest-substring-without-repeating-characters \
   --duration 45 \
   --win-score 800 \
   --name Kiwi
+```
+
+Cumulative timed (no early win — timer decides):
+
+```bash
+yarn duelcs host --config settings.test-cumulative.yaml --name Kiwi
 ```
 
 LeetCode URLs work too:
@@ -190,12 +200,58 @@ Press **q** to leave.
 
 ---
 
-## Lockout rules (default)
+## Game modes
 
-- Problems have point values (100 / 200 / 300 / … by default).
+Set `mode` in your settings file or pass `--mode` on the CLI.
+
+### Lockout (default)
+
+Classic Codeforces-style lockout.
+
 - **First Accepted solve locks the problem** — only that player gets the points.
-- First player to reach **800 points** wins early.
-- If time runs out, highest score wins. Ties are possible.
+- Others get nothing for that problem.
+- First to `win_score` wins early, or highest score when time runs out.
+
+```yaml
+mode: lockout
+win_score: 800
+```
+
+Test config: `settings.test.yaml`
+
+### Cumulative (timed)
+
+Relaxed timed race — good for practice sessions.
+
+- **Everyone can score on every problem once.**
+- No sniping — your solves always count for you.
+- Highest total when the timer hits zero wins.
+- Set `win_score: null` (or omit) for timer-only; optionally add `win_score` for early win.
+
+```yaml
+mode: cumulative
+duration_minutes: 45
+win_score: null
+```
+
+Test config: `settings.test-cumulative.yaml`
+
+### Speed
+
+Timed race with diminishing returns — rewards being fast without full lockout.
+
+- Multiple players can score on the same problem.
+- **1st solver:** 100% of points  
+- **2nd solver:** 50%  
+- **3rd+ solver:** 25%
+- Each player can only score once per problem.
+
+```yaml
+mode: speed
+win_score: 500
+```
+
+Test config: `settings.test-speed.yaml`
 
 ---
 
@@ -209,9 +265,15 @@ Press **q** to leave.
 
 **Userscript does not report solves**
 
-- Open Tampermonkey → Configure duelcs — are host URL and token correct?
-- Check the browser console for `[duelcs]` messages.
-- Use manual claim (press 1–9) as a fallback.
+1. Reinstall / paste the latest `userscript/duelcs.user.js` (v0.2.0+) into Tampermonkey and reload the LeetCode tab.
+2. Open DevTools → Console. You should see `[duelcs] Userscript loaded…`
+3. Tampermonkey menu → **Test duelcs host connection**. It should say Host reachable.
+4. Make sure the duel **phase is running** (press `s` after 2 players join). Reports while still in lobby are rejected.
+5. Host URL tips:
+   - Same machine as host: `http://127.0.0.1:3737`
+   - Friend machine: `http://YOUR_TAILSCALE_IP:3737`
+6. If auto-detect still fails: Tampermonkey menu → **Manually report current problem as Accepted**.
+7. Watch the host terminal for `[duelcs] solve report:` / `solve rejected:` lines.
 
 **LeetCode changed something and detection broke**
 
@@ -234,7 +296,7 @@ duelcs/
 
 Sites like BeatCode and CPDuels tried to be full platforms — auth, matchmaking, code execution, hosting. That is a lot to maintain for a side project.
 
-duelcs does one job: **coordinate a lockout match between friends.** LeetCode is the IDE and judge. Tailscale is the network. Your laptop is the server.
+duelcs does one job: **coordinate a LeetCode duel between friends.** LeetCode is the IDE and judge. Tailscale is the network. Your laptop is the server.
 
 ---
 

@@ -2,13 +2,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { load as loadYaml } from "js-yaml";
 import { defaultPoints, parseProblemInput } from "./protocol.js";
-import type { MatchConfig, Problem } from "./types.js";
+import { normalizeMode, MODES } from "./modes.js";
+import type { GameMode, MatchConfig, Problem } from "./types.js";
 
 export type Difficulty = "Easy" | "Medium" | "Hard";
 
 export interface DuelSettings {
+  mode: GameMode;
   durationMinutes: number;
-  winScore: number;
+  winScore: number | null;
   problemCount: number;
   points?: number[];
   difficulty: Difficulty[];
@@ -45,6 +47,20 @@ function normalizeTopicSlug(raw: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function parseWinScore(value: unknown, mode: GameMode): number | null {
+  if (value === null || value === "null" || value === "none") {
+    return null;
+  }
+  if (value === undefined) {
+    return mode === "lockout" ? 800 : null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("settings.win_score must be a positive number, null, or omitted.");
+  }
+  return parsed;
+}
+
 export function loadSettingsFile(path: string): DuelSettings {
   const absolute = resolve(path);
   const raw = loadYaml(readFileSync(absolute, "utf8"));
@@ -53,16 +69,14 @@ export function loadSettingsFile(path: string): DuelSettings {
   }
 
   const doc = raw as Record<string, unknown>;
+  const mode = normalizeMode(String(doc.mode ?? "lockout"));
   const durationMinutes = Number(doc.duration_minutes ?? 45);
-  const winScore = Number(doc.win_score ?? 800);
+  const winScore = parseWinScore(doc.win_score, mode);
   const problemCount = Number(doc.problem_count ?? 5);
   const excludePremium = doc.exclude_premium !== false;
 
   if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
     throw new Error("settings.duration_minutes must be a positive number.");
-  }
-  if (!Number.isFinite(winScore) || winScore <= 0) {
-    throw new Error("settings.win_score must be a positive number.");
   }
   if (!Number.isFinite(problemCount) || problemCount <= 0) {
     throw new Error("settings.problem_count must be a positive number.");
@@ -92,6 +106,7 @@ export function loadSettingsFile(path: string): DuelSettings {
   }
 
   return {
+    mode,
     durationMinutes,
     winScore,
     problemCount,
@@ -114,13 +129,13 @@ export function problemsFromSettingsList(settings: DuelSettings): Problem[] {
   );
 }
 
-export function matchConfigFromProblems(
-  problems: Problem[],
-  settings: Pick<DuelSettings, "durationMinutes" | "winScore">,
-): MatchConfig {
+export function matchConfigFromProblems(problems: Problem[], settings: DuelSettings): MatchConfig {
   return {
+    mode: settings.mode,
     durationMinutes: settings.durationMinutes,
     winScore: settings.winScore,
     problems,
   };
 }
+
+export { MODES };
